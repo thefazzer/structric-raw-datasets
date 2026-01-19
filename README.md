@@ -12,7 +12,7 @@ mkdir -p ~/structric-data && cd ~/structric-data && \
 curl -L -o parcels_raw.parquet "https://media.githubusercontent.com/media/thefazzer/structric-raw-datasets/main/data/parcels_raw.parquet" && \
 pip install duckdb -q && \
 python3 << 'EOF'
-import duckdb, math
+import duckdb
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -73,49 +73,6 @@ counties = conn.execute("""
 for c in counties:
     print(f"  {c[0]:<20} {c[1]:>10,}  ({c[2]:>5}%)")
 
-# ASCII density map
-W, H = 48, 18
-grid_data = conn.execute(f"""
-    SELECT 
-        FLOOR((ST_X(ST_Centroid({geom_expr})) - ({bounds[0]})) / ({bounds[1]} - {bounds[0]}) * {W})::INTEGER as gx,
-        FLOOR(({bounds[3]} - ST_Y(ST_Centroid({geom_expr}))) / ({bounds[3]} - {bounds[2]}) * {H})::INTEGER as gy,
-        COUNT(*) as cnt
-    FROM read_parquet('parcels_raw.parquet')
-    GROUP BY 1, 2
-    HAVING gx >= 0 AND gx < {W} AND gy >= 0 AND gy < {H}
-""").fetchall()
-
-grid = [[0]*W for _ in range(H)]
-max_cnt = 1
-for gx, gy, cnt in grid_data:
-    if 0 <= gx < W and 0 <= gy < H:
-        grid[gy][gx] = cnt
-        max_cnt = max(max_cnt, cnt)
-
-chars = ' .:-=+*#%@'
-print(f"\nParcel Density Map (log scale):")
-print("┌" + "─"*W + "┐ N")
-for y in range(H):
-    row = "│"
-    for x in range(W):
-        if grid[y][x] == 0:
-            row += ' '
-        else:
-            lvl = int(math.log10(grid[y][x]+1) / math.log10(max_cnt+1) * (len(chars)-1))
-            row += chars[min(lvl, len(chars)-1)]
-    lat = bounds[3] - (y + 0.5) * (bounds[3] - bounds[2]) / H
-    if y == 0:
-        row += f"│ {bounds[3]:.1f}°"
-    elif y == H-1:
-        row += f"│ {bounds[2]:.1f}°"
-    else:
-        row += "│"
-    print(row)
-print("└" + "─"*W + "┘ S")
-print(f" {bounds[0]:.1f}°" + " "*(W-14) + f"{bounds[1]:.1f}°")
-print(" W" + " "*(W-2) + "E")
-print(f" Legend: ' '=none .=sparse @=dense ({max_cnt:,} max)")
-
 print("\n" + "=" * 70)
 print("Data: ~/structric-data/parcels_raw.parquet (196 MB)")
 print("=" * 70)
@@ -147,6 +104,8 @@ EOF
 
 ## Example Queries
 
+### Basic Queries
+
 ```python
 import duckdb
 
@@ -160,6 +119,110 @@ large_la = conn.execute("""
     WHERE county = 'LOS ANGELES' AND area_sqft > 10000
     LIMIT 100
 """).fetchdf()
+
+# Parcels in a bounding box (downtown LA)
+downtown = conn.execute("""
+    SELECT apn, city, area_sqft, ST_AsText(geometry_wkb) as wkt
+    FROM read_parquet('~/structric-data/parcels_raw.parquet')
+    WHERE ST_Intersects(geometry_wkb, 
+          ST_MakeEnvelope(-118.26, 34.04, -118.24, 34.06))
+""").fetchdf()
+```
+
+### ASCII Density Map
+
+Generate a text-based visualization of parcel density across California:
+
+```python
+import duckdb, math
+
+conn = duckdb.connect(':memory:')
+conn.execute("INSTALL spatial; LOAD spatial;")
+
+# Detect geometry type
+col_type = conn.execute("""
+    SELECT typeof(geometry_wkb) FROM read_parquet('parcels_raw.parquet') LIMIT 1
+""").fetchone()[0]
+geom_expr = "geometry_wkb" if 'GEOMETRY' in col_type.upper() else "ST_GeomFromWKB(geometry_wkb)"
+
+# Get bounds
+bounds = conn.execute(f"""
+    SELECT 
+        MIN(ST_XMin({geom_expr})), MAX(ST_XMax({geom_expr})),
+        MIN(ST_YMin({geom_expr})), MAX(ST_YMax({geom_expr}))
+    FROM read_parquet('parcels_raw.parquet')
+""").fetchone()
+
+# Build density grid
+W, H = 48, 18
+grid_data = conn.execute(f"""
+    SELECT 
+        FLOOR((ST_X(ST_Centroid({geom_expr})) - ({bounds[0]})) / ({bounds[1]} - {bounds[0]}) * {W})::INTEGER as gx,
+        FLOOR(({bounds[3]} - ST_Y(ST_Centroid({geom_expr}))) / ({bounds[3]} - {bounds[2]}) * {H})::INTEGER as gy,
+        COUNT(*) as cnt
+    FROM read_parquet('parcels_raw.parquet')
+    GROUP BY 1, 2
+    HAVING gx >= 0 AND gx < {W} AND gy >= 0 AND gy < {H}
+""").fetchall()
+
+grid = [[0]*W for _ in range(H)]
+max_cnt = 1
+for gx, gy, cnt in grid_data:
+    if 0 <= gx < W and 0 <= gy < H:
+        grid[gy][gx] = cnt
+        max_cnt = max(max_cnt, cnt)
+
+# Render ASCII map
+chars = ' .:-=+*#%@'
+print(f"Parcel Density Map (log scale):")
+print("┌" + "─"*W + "┐ N")
+for y in range(H):
+    row = "│"
+    for x in range(W):
+        if grid[y][x] == 0:
+            row += ' '
+        else:
+            lvl = int(math.log10(grid[y][x]+1) / math.log10(max_cnt+1) * (len(chars)-1))
+            row += chars[min(lvl, len(chars)-1)]
+    if y == 0:
+        row += f"│ {bounds[3]:.1f}°"
+    elif y == H-1:
+        row += f"│ {bounds[2]:.1f}°"
+    else:
+        row += "│"
+    print(row)
+print("└" + "─"*W + "┘ S")
+print(f" {bounds[0]:.1f}°" + " "*(W-14) + f"{bounds[1]:.1f}°")
+print(" W" + " "*(W-2) + "E")
+print(f" Legend: ' '=none .=sparse @=dense ({max_cnt:,} max)")
+```
+
+Output:
+```
+Parcel Density Map (log scale):
+┌────────────────────────────────────────────────┐ N
+│=*==:         :--.+=-:                          │ 42.0°
+│ ==+=         -+=*+===                          │
+│=*=+-          ===++=:                          │
+│=+=+=--:      -+++++==                          │
+│  =+++====+=***=-=++==                          │
+│  =+=*+**+=+=++*#+=+*#                          │  ← Bay Area
+│    +:.-+*+-  *#***+=*===                       │
+│       +*#####  =***+  -.==-                    │
+│          #%#+  -+*+=+++==+:=+--.               │
+│             + -+***+*#*+-: .==:::              │
+│            ##++:==+=+##*+=  :=-  ..:-::        │
+│             -=+==++++++-+  .-.-::--:::-=-      │
+│                    -+=++##++*+=*+              │
+│                       =+++++****+              │
+│                           =####*=              │
+│                          -*#%@%%#*             │  ← LA/OC
+│                            := #%#       *= :..-│
+│                            ::          :==#+===│ 32.7°
+└────────────────────────────────────────────────┘ S
+ -124.4°                                  -114.6°
+ W                                              E
+ Legend: ' '=none .=sparse @=dense (278,757 max)
 ```
 
 ## Citation
