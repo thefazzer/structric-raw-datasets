@@ -10,7 +10,7 @@ Raw California parcel boundaries for academic research.
 # Download and explore (copy-paste this entire block)
 mkdir -p ~/structric-data && cd ~/structric-data && \
 curl -L -o parcels_raw.parquet "https://github.com/thefazzer/structric-raw-datasets/releases/download/v1.0.0/parcels_raw.parquet" && \
-pip install duckdb pyarrow pandas -q && \
+pip install duckdb -q && \
 python3 << 'EOF'
 import duckdb
 
@@ -27,8 +27,8 @@ stats = conn.execute("""
         COUNT(*) as total_parcels,
         COUNT(DISTINCT county) as counties,
         COUNT(DISTINCT city) as cities,
-        MIN(area_sqft) as min_sqft,
-        MAX(area_sqft) as max_sqft,
+        MIN(area_sqft)::INTEGER as min_sqft,
+        MAX(area_sqft)::INTEGER as max_sqft,
         AVG(area_sqft)::INTEGER as avg_sqft,
         APPROX_QUANTILE(area_sqft, 0.5)::INTEGER as median_sqft
     FROM read_parquet('parcels_raw.parquet')
@@ -43,23 +43,23 @@ print(f"  Max:          {stats[4]:>12,}")
 print(f"  Mean:         {stats[5]:>12,}")
 print(f"  Median:       {stats[6]:>12,}")
 
-# Geospatial bounds
+# Geospatial bounds (geometry_wkb is already GEOMETRY type)
 bounds = conn.execute("""
     SELECT 
-        MIN(ST_XMin(ST_GeomFromWKB(geometry_wkb))) as min_lon,
-        MAX(ST_XMax(ST_GeomFromWKB(geometry_wkb))) as max_lon,
-        MIN(ST_YMin(ST_GeomFromWKB(geometry_wkb))) as min_lat,
-        MAX(ST_YMax(ST_GeomFromWKB(geometry_wkb))) as max_lat
+        MIN(ST_XMin(geometry_wkb))::DECIMAL(10,4) as min_lon,
+        MAX(ST_XMax(geometry_wkb))::DECIMAL(10,4) as max_lon,
+        MIN(ST_YMin(geometry_wkb))::DECIMAL(10,4) as min_lat,
+        MAX(ST_YMax(geometry_wkb))::DECIMAL(10,4) as max_lat
     FROM read_parquet('parcels_raw.parquet')
 """).fetchone()
 
 print(f"\nGeospatial Bounds (EPSG:4326):")
-print(f"  Longitude:    {bounds[0]:>10.4f}° to {bounds[1]:.4f}°")
-print(f"  Latitude:     {bounds[2]:>10.4f}° to {bounds[3]:.4f}°")
+print(f"  Longitude:    {bounds[0]:>12}° to {bounds[1]}°")
+print(f"  Latitude:     {bounds[2]:>12}° to {bounds[3]}°")
 
 # County breakdown
 print(f"\nTop 10 Counties by Parcel Count:")
-print("-" * 40)
+print("-" * 45)
 counties = conn.execute("""
     SELECT county, COUNT(*) as cnt, 
            (COUNT(*) * 100.0 / SUM(COUNT(*)) OVER())::DECIMAL(5,2) as pct
@@ -67,17 +67,21 @@ counties = conn.execute("""
     GROUP BY county ORDER BY cnt DESC LIMIT 10
 """).fetchall()
 for c in counties:
-    print(f"  {c[0]:<20} {c[1]:>10,}  ({c[2]}%)")
+    print(f"  {c[0]:<20} {c[1]:>10,}  ({c[2]:>5}%)")
 
 # Schema
 print(f"\nDataset Schema:")
-print("-" * 40)
-schema = conn.execute("DESCRIBE SELECT * FROM read_parquet('parcels_raw.parquet')").fetchall()
+print("-" * 45)
+schema = conn.execute("""
+    DESCRIBE SELECT apn, geometry_wkb, area_sqft, city, county, 
+                    source_system, inferred_flag, license_note
+    FROM read_parquet('parcels_raw.parquet')
+""").fetchall()
 for col in schema:
-    print(f"  {col[0]:<25} {col[1]}")
+    print(f"  {col[0]:<20} {col[1]}")
 
 print("\n" + "=" * 70)
-print(f"Data location: ~/structric-data/parcels_raw.parquet")
+print("Data location: ~/structric-data/parcels_raw.parquet (196 MB)")
 print("=" * 70)
 EOF
 ```
@@ -87,12 +91,11 @@ EOF
 | Field | Type | Description |
 |-------|------|-------------|
 | `apn` | string | Assessor's Parcel Number |
-| `geometry_wkb` | binary | Parcel boundary (WKB, EPSG:4326) |
+| `geometry_wkb` | geometry | Parcel boundary (EPSG:4326) |
 | `area_sqft` | float | Parcel area in square feet |
 | `city` | string | City name |
 | `county` | string | County name |
 | `state` | string | "California" |
-| `zoning_raw` | string | Raw zoning (NULL - not in source) |
 | `source_system` | string | Origin system |
 | `source_table` | string | Origin table |
 | `source_id` | string | Record ID in source |
@@ -104,10 +107,10 @@ EOF
 
 - **Source**: State of California / Regrid parcel data
 - **License**: Open Database License (ODbL)
-- **Filtering**: Valid geometry, 1,200 sqft ≤ area < 50M sqft
-- **No inference**: All fields are directly from source (inferred_flag = FALSE)
+- **Filtering**: Valid geometry, 1,200 ≤ area < 50M sqft
+- **No inference**: All fields directly from source
 
-## Loading in Python
+## Example Queries
 
 ```python
 import duckdb
@@ -115,12 +118,20 @@ import duckdb
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
 
-# Query LA County parcels
-la_parcels = conn.execute("""
-    SELECT apn, city, area_sqft, ST_AsText(ST_GeomFromWKB(geometry_wkb)) as wkt
+# LA County parcels > 10,000 sqft
+large_la = conn.execute("""
+    SELECT apn, city, area_sqft
     FROM read_parquet('~/structric-data/parcels_raw.parquet')
-    WHERE county = 'LOS ANGELES'
-    LIMIT 10
+    WHERE county = 'LOS ANGELES' AND area_sqft > 10000
+    LIMIT 100
+""").fetchdf()
+
+# Parcels in a bounding box (downtown LA)
+downtown = conn.execute("""
+    SELECT apn, city, area_sqft, ST_AsText(geometry_wkb) as wkt
+    FROM read_parquet('~/structric-data/parcels_raw.parquet')
+    WHERE ST_Intersects(geometry_wkb, 
+          ST_MakeEnvelope(-118.26, 34.04, -118.24, 34.06))
 """).fetchdf()
 ```
 
@@ -128,6 +139,6 @@ la_parcels = conn.execute("""
 
 ```
 California Parcel Dataset, v1.0.0 (2026).
-Derived from California State Parcel Data / Regrid.
+Source: California State Parcel Data / Regrid.
 https://github.com/thefazzer/structric-raw-datasets
 ```
