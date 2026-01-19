@@ -43,15 +43,25 @@ print(f"  Max:          {stats[4]:>12,}")
 print(f"  Mean:         {stats[5]:>12,}")
 print(f"  Median:       {stats[6]:>12,}")
 
-# Geospatial bounds (geometry_wkb is already GEOMETRY type)
-bounds = conn.execute("""
-    SELECT 
-        MIN(ST_XMin(geometry_wkb))::DECIMAL(10,4) as min_lon,
-        MAX(ST_XMax(geometry_wkb))::DECIMAL(10,4) as max_lon,
-        MIN(ST_YMin(geometry_wkb))::DECIMAL(10,4) as min_lat,
-        MAX(ST_YMax(geometry_wkb))::DECIMAL(10,4) as max_lat
-    FROM read_parquet('parcels_raw.parquet')
-""").fetchone()
+# Geospatial bounds - handle both GEOMETRY and BLOB types
+try:
+    bounds = conn.execute("""
+        SELECT 
+            MIN(ST_XMin(geometry_wkb))::DECIMAL(10,4),
+            MAX(ST_XMax(geometry_wkb))::DECIMAL(10,4),
+            MIN(ST_YMin(geometry_wkb))::DECIMAL(10,4),
+            MAX(ST_YMax(geometry_wkb))::DECIMAL(10,4)
+        FROM read_parquet('parcels_raw.parquet')
+    """).fetchone()
+except:
+    bounds = conn.execute("""
+        SELECT 
+            MIN(ST_XMin(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
+            MAX(ST_XMax(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
+            MIN(ST_YMin(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
+            MAX(ST_YMax(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4)
+        FROM read_parquet('parcels_raw.parquet')
+    """).fetchone()
 
 print(f"\nGeospatial Bounds (EPSG:4326):")
 print(f"  Longitude:    {bounds[0]:>12}° to {bounds[1]}°")
