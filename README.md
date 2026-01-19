@@ -9,8 +9,9 @@ Raw California parcel boundaries for academic research.
 ```bash
 # Download and explore (copy-paste this entire block)
 mkdir -p ~/structric-data && cd ~/structric-data && \
-curl -L -o parcels_raw.parquet "https://media.githubusercontent.com/media/thefazzer/structric-raw-datasets/main/data/parcels_raw.parquet" && \
-pip install duckdb -q && \
+curl -L --progress-bar -o parcels_raw.parquet "https://media.githubusercontent.com/media/thefazzer/structric-raw-datasets/main/data/parcels_raw.parquet" && \
+echo "Installing duckdb..." && pip install duckdb -q && \
+echo "Analyzing parcels..." && \
 python3 << 'EOF'
 import duckdb
 
