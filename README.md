@@ -133,32 +133,42 @@ downtown = conn.execute("""
 ### Export to CSV
 
 ```python
-import duckdb
+import duckdb, time
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
 
-# Export LA County parcels to CSV (without geometry)
-print("Exporting LA County parcels...")
-conn.execute("""
-    COPY (
-        SELECT apn, city, county, area_sqft, source_system
-        FROM read_parquet('parcels_raw.parquet')
-        WHERE county = 'LOS ANGELES'
-    ) TO 'la_parcels.csv' (HEADER, DELIMITER ',')
-""")
-print("  → la_parcels.csv (971,825 rows)")
+def export_csv(query, filename, description):
+    """Export query results to CSV with progress tracking."""
+    # Count rows first
+    count_query = f"SELECT COUNT(*) FROM ({query})"
+    total = conn.execute(count_query).fetchone()[0]
+    print(f"{description}: {total:,} rows")
+    
+    # Export with timing
+    start = time.time()
+    conn.execute(f"COPY ({query}) TO '{filename}' (HEADER, DELIMITER ',')")
+    elapsed = time.time() - start
+    rate = total / elapsed if elapsed > 0 else 0
+    print(f"  → {filename} ({elapsed:.1f}s, {rate:,.0f} rows/sec)")
 
-# Export with geometry as WKT
-print("Exporting Orange County with geometry...")
-conn.execute("""
-    COPY (
-        SELECT apn, city, county, area_sqft, ST_AsText(geometry_wkb) as geometry_wkt
-        FROM read_parquet('parcels_raw.parquet')
-        WHERE county = 'ORANGE'
-    ) TO 'orange_parcels_with_geom.csv' (HEADER, DELIMITER ',')
-""")
-print("  → orange_parcels_with_geom.csv (379,073 rows)")
+# Export LA County parcels to CSV (without geometry)
+export_csv(
+    """SELECT apn, city, county, area_sqft, source_system
+       FROM read_parquet('parcels_raw.parquet')
+       WHERE county = 'LOS ANGELES'""",
+    "la_parcels.csv",
+    "Exporting LA County"
+)
+
+# Export with geometry as WKT (slower due to geometry conversion)
+export_csv(
+    """SELECT apn, city, county, area_sqft, ST_AsText(geometry_wkb) as geometry_wkt
+       FROM read_parquet('parcels_raw.parquet')
+       WHERE county = 'ORANGE'""",
+    "orange_parcels_with_geom.csv",
+    "Exporting Orange County with geometry"
+)
 ```
 
 ### ASCII Density Map
