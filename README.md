@@ -132,9 +132,9 @@ downtown = conn.execute("""
 
 ### Export to CSV
 
-```python
-import duckdb, time, os
-os.chdir(os.path.expanduser('~/structric-data'))
+```bash
+cd ~/structric-data && python3 << 'EOF'
+import duckdb, time
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -170,15 +170,16 @@ export_csv(
     "orange_parcels_with_geom.csv",
     "Exporting Orange County with geometry"
 )
+EOF
 ```
 
 ### ASCII Density Map
 
 Generate a text-based visualization of parcel density across California:
 
-```python
-import duckdb, math, os
-os.chdir(os.path.expanduser('~/structric-data'))
+```bash
+cd ~/structric-data && python3 << 'EOF'
+import duckdb, math
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -241,6 +242,7 @@ print("└" + "─"*W + "┘ S")
 print(f" {bounds[0]:.1f}°" + " "*(W-14) + f"{bounds[1]:.1f}°")
 print(" W" + " "*(W-2) + "E")
 print(f" Legend: ' '=none .=sparse @=dense ({max_cnt:,} max)")
+EOF
 ```
 
 Output:
