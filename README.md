@@ -107,27 +107,36 @@ EOF
 
 ### Basic Queries
 
-```python
+```bash
+cd ~/structric-data && python3 << 'EOF'
 import duckdb
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
 
 # LA County parcels > 10,000 sqft
+print("LA County parcels > 10,000 sqft:")
 large_la = conn.execute("""
     SELECT apn, city, area_sqft
-    FROM read_parquet('~/structric-data/parcels_raw.parquet')
+    FROM read_parquet('parcels_raw.parquet')
     WHERE county = 'LOS ANGELES' AND area_sqft > 10000
-    LIMIT 100
-""").fetchdf()
+    LIMIT 10
+""").fetchall()
+for row in large_la:
+    print(f"  {row[0]:<15} {row[1]:<20} {row[2]:>12,.0f} sqft")
 
 # Parcels in a bounding box (downtown LA)
+print("\nParcels in Downtown LA bounding box:")
 downtown = conn.execute("""
-    SELECT apn, city, area_sqft, ST_AsText(geometry_wkb) as wkt
-    FROM read_parquet('~/structric-data/parcels_raw.parquet')
+    SELECT apn, city, area_sqft
+    FROM read_parquet('parcels_raw.parquet')
     WHERE ST_Intersects(geometry_wkb, 
           ST_MakeEnvelope(-118.26, 34.04, -118.24, 34.06))
-""").fetchdf()
+    LIMIT 10
+""").fetchall()
+for row in downtown:
+    print(f"  {row[0]:<15} {row[1]:<20} {row[2]:>12,.0f} sqft")
+EOF
 ```
 
 ### Export to CSV
