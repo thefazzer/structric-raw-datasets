@@ -129,6 +129,33 @@ downtown = conn.execute("""
 """).fetchdf()
 ```
 
+### Export to CSV
+
+```python
+import duckdb
+
+conn = duckdb.connect(':memory:')
+conn.execute("INSTALL spatial; LOAD spatial;")
+
+# Export LA County parcels to CSV (without geometry)
+conn.execute("""
+    COPY (
+        SELECT apn, city, county, area_sqft, source_system
+        FROM read_parquet('parcels_raw.parquet')
+        WHERE county = 'LOS ANGELES'
+    ) TO 'la_parcels.csv' (HEADER, DELIMITER ',')
+""")
+
+# Export with geometry as WKT
+conn.execute("""
+    COPY (
+        SELECT apn, city, county, area_sqft, ST_AsText(geometry_wkb) as geometry_wkt
+        FROM read_parquet('parcels_raw.parquet')
+        WHERE county = 'ORANGE'
+    ) TO 'orange_parcels_with_geom.csv' (HEADER, DELIMITER ',')
+""")
+```
+
 ### ASCII Density Map
 
 Generate a text-based visualization of parcel density across California:
