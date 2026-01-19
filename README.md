@@ -12,7 +12,7 @@ mkdir -p ~/structric-data && cd ~/structric-data && \
 curl -L -o parcels_raw.parquet "https://github.com/thefazzer/structric-raw-datasets/releases/download/v1.0.0/parcels_raw.parquet" && \
 pip install duckdb -q && \
 python3 << 'EOF'
-import duckdb
+import duckdb, math
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -43,36 +43,26 @@ print(f"  Max:          {stats[4]:>12,}")
 print(f"  Mean:         {stats[5]:>12,}")
 print(f"  Median:       {stats[6]:>12,}")
 
-# Detect geometry column type and build appropriate query
+# Detect geometry column type
 col_type = conn.execute("""
     SELECT typeof(geometry_wkb) FROM read_parquet('parcels_raw.parquet') LIMIT 1
 """).fetchone()[0]
+geom_expr = "geometry_wkb" if 'GEOMETRY' in col_type.upper() else "ST_GeomFromWKB(geometry_wkb)"
 
-if 'GEOMETRY' in col_type.upper():
-    bounds = conn.execute("""
-        SELECT 
-            MIN(ST_XMin(geometry_wkb))::DECIMAL(10,4),
-            MAX(ST_XMax(geometry_wkb))::DECIMAL(10,4),
-            MIN(ST_YMin(geometry_wkb))::DECIMAL(10,4),
-            MAX(ST_YMax(geometry_wkb))::DECIMAL(10,4)
-        FROM read_parquet('parcels_raw.parquet')
-    """).fetchone()
-else:
-    bounds = conn.execute("""
-        SELECT 
-            MIN(ST_XMin(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
-            MAX(ST_XMax(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
-            MIN(ST_YMin(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
-            MAX(ST_YMax(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4)
-        FROM read_parquet('parcels_raw.parquet')
-    """).fetchone()
+# Get bounds
+bounds = conn.execute(f"""
+    SELECT 
+        MIN(ST_XMin({geom_expr})), MAX(ST_XMax({geom_expr})),
+        MIN(ST_YMin({geom_expr})), MAX(ST_YMax({geom_expr}))
+    FROM read_parquet('parcels_raw.parquet')
+""").fetchone()
 
 print(f"\nGeospatial Bounds (EPSG:4326):")
-print(f"  Longitude:    {bounds[0]:>12}° to {bounds[1]}°")
-print(f"  Latitude:     {bounds[2]:>12}° to {bounds[3]}°")
+print(f"  Longitude:  {bounds[0]:>10.4f}° to {bounds[1]:.4f}°")
+print(f"  Latitude:   {bounds[2]:>10.4f}° to {bounds[3]:.4f}°")
 
 # County breakdown
-print(f"\nTop 10 Counties by Parcel Count:")
+print(f"\nTop 10 Counties:")
 print("-" * 45)
 counties = conn.execute("""
     SELECT county, COUNT(*) as cnt, 
@@ -83,19 +73,51 @@ counties = conn.execute("""
 for c in counties:
     print(f"  {c[0]:<20} {c[1]:>10,}  ({c[2]:>5}%)")
 
-# Schema
-print(f"\nDataset Schema:")
-print("-" * 45)
-schema = conn.execute("""
-    DESCRIBE SELECT apn, geometry_wkb, area_sqft, city, county, 
-                    source_system, inferred_flag, license_note
+# ASCII density map
+W, H = 48, 18
+grid_data = conn.execute(f"""
+    SELECT 
+        FLOOR((ST_X(ST_Centroid({geom_expr})) - ({bounds[0]})) / ({bounds[1]} - {bounds[0]}) * {W})::INTEGER as gx,
+        FLOOR(({bounds[3]} - ST_Y(ST_Centroid({geom_expr}))) / ({bounds[3]} - {bounds[2]}) * {H})::INTEGER as gy,
+        COUNT(*) as cnt
     FROM read_parquet('parcels_raw.parquet')
+    GROUP BY 1, 2
+    HAVING gx >= 0 AND gx < {W} AND gy >= 0 AND gy < {H}
 """).fetchall()
-for col in schema:
-    print(f"  {col[0]:<20} {col[1]}")
+
+grid = [[0]*W for _ in range(H)]
+max_cnt = 1
+for gx, gy, cnt in grid_data:
+    if 0 <= gx < W and 0 <= gy < H:
+        grid[gy][gx] = cnt
+        max_cnt = max(max_cnt, cnt)
+
+chars = ' .:-=+*#%@'
+print(f"\nParcel Density Map (log scale):")
+print("┌" + "─"*W + "┐ N")
+for y in range(H):
+    row = "│"
+    for x in range(W):
+        if grid[y][x] == 0:
+            row += ' '
+        else:
+            lvl = int(math.log10(grid[y][x]+1) / math.log10(max_cnt+1) * (len(chars)-1))
+            row += chars[min(lvl, len(chars)-1)]
+    lat = bounds[3] - (y + 0.5) * (bounds[3] - bounds[2]) / H
+    if y == 0:
+        row += f"│ {bounds[3]:.1f}°"
+    elif y == H-1:
+        row += f"│ {bounds[2]:.1f}°"
+    else:
+        row += "│"
+    print(row)
+print("└" + "─"*W + "┘ S")
+print(f" {bounds[0]:.1f}°" + " "*(W-14) + f"{bounds[1]:.1f}°")
+print(" W" + " "*(W-2) + "E")
+print(f" Legend: ' '=none .=sparse @=dense ({max_cnt:,} max)")
 
 print("\n" + "=" * 70)
-print("Data location: ~/structric-data/parcels_raw.parquet (196 MB)")
+print("Data: ~/structric-data/parcels_raw.parquet (196 MB)")
 print("=" * 70)
 EOF
 ```
@@ -115,7 +137,6 @@ EOF
 | `source_id` | string | Record ID in source |
 | `inferred_flag` | boolean | Always FALSE |
 | `license_note` | string | License information |
-| `ingested_at` | timestamp | Export timestamp |
 
 ## Provenance
 
@@ -138,14 +159,6 @@ large_la = conn.execute("""
     FROM read_parquet('~/structric-data/parcels_raw.parquet')
     WHERE county = 'LOS ANGELES' AND area_sqft > 10000
     LIMIT 100
-""").fetchdf()
-
-# Parcels in a bounding box (downtown LA)
-downtown = conn.execute("""
-    SELECT apn, city, area_sqft, ST_AsText(geometry_wkb) as wkt
-    FROM read_parquet('~/structric-data/parcels_raw.parquet')
-    WHERE ST_Intersects(geometry_wkb, 
-          ST_MakeEnvelope(-118.26, 34.04, -118.24, 34.06))
 """).fetchdf()
 ```
 
