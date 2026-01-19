@@ -122,8 +122,8 @@ large_la = conn.execute("""
     WHERE county = 'LOS ANGELES' AND area_sqft > 10000
     LIMIT 10
 """).fetchall()
-for row in large_la:
-    print(f"  {row[0]:<15} {row[1]:<20} {row[2]:>12,.0f} sqft")
+for apn, city, sqft in large_la:
+    print(f"  {apn or 'N/A':<15} {city or 'Unknown':<20} {sqft:>12,.0f} sqft")
 
 # Parcels in a bounding box (downtown LA)
 print("\nParcels in Downtown LA bounding box:")
@@ -134,8 +134,8 @@ downtown = conn.execute("""
           ST_MakeEnvelope(-118.26, 34.04, -118.24, 34.06))
     LIMIT 10
 """).fetchall()
-for row in downtown:
-    print(f"  {row[0]:<15} {row[1]:<20} {row[2]:>12,.0f} sqft")
+for apn, city, sqft in downtown:
+    print(f"  {apn or 'N/A':<15} {city or 'Unknown':<20} {sqft:>12,.0f} sqft")
 EOF
 ```
 
