@@ -153,25 +153,16 @@ def export_csv(query, filename, description):
     rate = total / elapsed if elapsed > 0 else 0
     print(f"  → {filename} ({elapsed:.1f}s, {rate:,.0f} rows/sec)")
 
-# Export LA County parcels to CSV (all columns except geometry)
+# Export LA County parcels to CSV (all columns, geometry as WKT)
 export_csv(
-    """SELECT apn, area_sqft, city, county, state, zoning_raw, 
+    """SELECT apn, ST_AsText(geometry_wkb) as geometry_wkt, area_sqft, 
+              city, county, state, zoning_raw, 
               source_system, source_table, source_id, 
               inferred_flag, license_note, ingested_at
        FROM read_parquet('parcels_raw.parquet')
        WHERE county = 'LOS ANGELES'""",
     "la_parcels.csv",
     "Exporting LA County"
-)
-
-# Export with geometry as WKT (slower due to geometry conversion)
-export_csv(
-    """SELECT apn, area_sqft, city, county, state,
-              ST_AsText(geometry_wkb) as geometry_wkt
-       FROM read_parquet('parcels_raw.parquet')
-       WHERE county = 'ORANGE'""",
-    "orange_parcels_with_geom.csv",
-    "Exporting Orange County with geometry"
 )
 EOF
 ```
