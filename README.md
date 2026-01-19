@@ -139,6 +139,7 @@ conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
 
 # Export LA County parcels to CSV (without geometry)
+print("Exporting LA County parcels...")
 conn.execute("""
     COPY (
         SELECT apn, city, county, area_sqft, source_system
@@ -146,8 +147,10 @@ conn.execute("""
         WHERE county = 'LOS ANGELES'
     ) TO 'la_parcels.csv' (HEADER, DELIMITER ',')
 """)
+print("  → la_parcels.csv (971,825 rows)")
 
 # Export with geometry as WKT
+print("Exporting Orange County with geometry...")
 conn.execute("""
     COPY (
         SELECT apn, city, county, area_sqft, ST_AsText(geometry_wkb) as geometry_wkt
@@ -155,6 +158,7 @@ conn.execute("""
         WHERE county = 'ORANGE'
     ) TO 'orange_parcels_with_geom.csv' (HEADER, DELIMITER ',')
 """)
+print("  → orange_parcels_with_geom.csv (379,073 rows)")
 ```
 
 ### ASCII Density Map
