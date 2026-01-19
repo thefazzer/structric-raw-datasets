@@ -43,8 +43,12 @@ print(f"  Max:          {stats[4]:>12,}")
 print(f"  Mean:         {stats[5]:>12,}")
 print(f"  Median:       {stats[6]:>12,}")
 
-# Geospatial bounds - handle both GEOMETRY and BLOB types
-try:
+# Detect geometry column type and build appropriate query
+col_type = conn.execute("""
+    SELECT typeof(geometry_wkb) FROM read_parquet('parcels_raw.parquet') LIMIT 1
+""").fetchone()[0]
+
+if 'GEOMETRY' in col_type.upper():
     bounds = conn.execute("""
         SELECT 
             MIN(ST_XMin(geometry_wkb))::DECIMAL(10,4),
@@ -53,7 +57,7 @@ try:
             MAX(ST_YMax(geometry_wkb))::DECIMAL(10,4)
         FROM read_parquet('parcels_raw.parquet')
     """).fetchone()
-except:
+else:
     bounds = conn.execute("""
         SELECT 
             MIN(ST_XMin(ST_GeomFromWKB(geometry_wkb)))::DECIMAL(10,4),
