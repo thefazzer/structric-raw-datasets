@@ -215,12 +215,21 @@ Every record in every dataset contains these provenance fields:
 
 **Total**: ~1.1 GB
 
-### Hosting Note
+### Data Download
 
-Due to file sizes exceeding GitHub's standard limits, data files are hosted via Git LFS or external storage. Options:
-1. **Git LFS**: Requires `git lfs install` before cloning
-2. **Direct download**: See releases page for direct .parquet downloads
-3. **DuckDB remote**: Query directly from cloud storage (see examples below)
+Data files exceed GitHub's file size limits and are hosted via **GitHub Releases**.
+
+**Download the data**:
+1. Go to the [Releases page](../../releases)
+2. Download `parcels_raw.parquet` and `buildings_raw.parquet`
+3. Place them in the `data/` directory
+
+Or use the command line:
+```bash
+# After cloning the repo
+cd structric-raw-datasets/data
+gh release download v1.0.0
+```
 
 ```python
 # Example: Query from cloud storage (if hosted on S3/GCS)
