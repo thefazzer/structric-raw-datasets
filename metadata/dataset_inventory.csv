@@ -1,0 +1,22 @@
+dataset_name,duckdb_file_path,table_name,row_count,geometry_type,primary_keys,source_system,spatial_resolution,notes
+structric_archive/buildings,./data/duckdb/archive/structric.duckdb,buildings,20229182,building/footprint,id;building_id;centroid_lon,structric_archive,building-level,
+ms_buildings_california,./data/sources/microsoft/geoparquet/california_buildings_chunk_*.parquet,parquet_file,11542912,building/footprint,confidence,parquet_export,building-level,Microsoft ML Building Footprints for California
+indexing/parcel_group_membership,./data/duckdb/indexing.duckdb,parcel_group_membership,2713770,none,parcel_id;group_id,indexing,parcel-level,
+ca_parcels_bulk/ca_parcels_statewide,./data/duckdb/archive/structric_ca_parcels_bulk.duckdb,ca_parcels_statewide,2678000,parcel,OBJECTID;PARCEL_APN;PARCEL_DMP_ID,ca_parcels_bulk,parcel-level,
+parcels_snapshot,./data/snapshots/parcels_snapshot.parquet,parquet_file,1390303,parcel,parcel_id,parquet_export,parcel-level,LA County area parcel snapshot
+structric_archive/parcels,./data/duckdb/archive/structric.duckdb,parcels,85075,parcel,id;parcel_id;centroid_lon,structric_archive,parcel-level,
+la_city_permits/permits,./data/duckdb/la_city_permits.duckdb,permits,29969,none,permit_id;program_confidence;program_evidence,la_city_permits,unknown,
+sb9_mli_parcels,./data/sb9_mli/parcels.parquet,parquet_file,5361,parcel,parcel_id,parquet_export,parcel-level,SB9/MLI eligible parcels sample
+indexing/viability_results,./data/duckdb/indexing.duckdb,viability_results,5214,none,parcel_id,indexing,unknown,
+sb9_mli_permits,./data/sb9_mli/permits.parquet,parquet_file,1000,none,permit_id,parquet_export,permit-level,SB9/MLI permits sample
+deal_triangles/deal_triangles_output,./data/duckdb/deal_triangles.duckdb,deal_triangles_output,583,none,confidence_score,deal_triangles,unknown,
+structric_archive/planning_applications,./data/duckdb/archive/structric.duckdb,planning_applications,134,none,application_id;parcel_id,structric_archive,unknown,
+structric_archive/market_listings,./data/duckdb/archive/structric.duckdb,market_listings,25,none,listing_id,structric_archive,unknown,
+deal_triangles/deal_triangles_metrics,./data/duckdb/deal_triangles.duckdb,deal_triangles_metrics,1,none,avg_confidence;top_confidence,deal_triangles,unknown,
+structric_archive/hazards,./data/duckdb/archive/structric.duckdb,hazards,0,geometry,id;hazard_id,structric_archive,unknown,
+structric_archive/infrastructure_features,./data/duckdb/archive/structric.duckdb,infrastructure_features,0,geometry,feature_id,structric_archive,unknown,
+structric_archive/parcel_ingest_rejections,./data/duckdb/archive/structric.duckdb,parcel_ingest_rejections,0,none,parcel_id,structric_archive,parcel-level,
+structric_archive/planning_zones,./data/duckdb/archive/structric.duckdb,planning_zones,0,geometry,zone_id,structric_archive,unknown,
+structric_archive/stormwater_assets,./data/duckdb/archive/structric.duckdb,stormwater_assets,0,geometry,asset_id,structric_archive,unknown,
+structric_archive/ms_buildings,./data/duckdb/archive/structric.duckdb,ms_buildings,0,building/footprint,ms_id;confidence;residential,structric_archive,building-level,
+structric_archive/osm_buildings,./data/duckdb/archive/structric.duckdb,osm_buildings,0,building/footprint,osm_id;confidence;residential,structric_archive,building-level,
