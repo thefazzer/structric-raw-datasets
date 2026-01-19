@@ -267,6 +267,102 @@ Parcel Density Map (log scale):
  Legend: ' '=none .=sparse @=dense (278,757 max)
 ```
 
+### ASCII Parcel Shapes
+
+Visualize random parcel boundaries as ASCII art:
+
+```bash
+cd ~/structric-data && python3 << 'EOF'
+import duckdb
+
+conn = duckdb.connect(':memory:')
+conn.execute("INSTALL spatial; LOAD spatial;")
+
+# Get 3 random parcels
+parcels = conn.execute("""
+    SELECT apn, city, area_sqft, ST_AsText(geometry_wkb) as wkt
+    FROM read_parquet('parcels_raw.parquet')
+    WHERE area_sqft BETWEEN 5000 AND 15000
+    ORDER BY RANDOM()
+    LIMIT 3
+""").fetchall()
+
+def parse_polygon(wkt):
+    import re
+    coords = re.findall(r'(-?\d+\.?\d*)\s+(-?\d+\.?\d*)', wkt)
+    return [(float(x), float(y)) for x, y in coords]
+
+def render_parcel(coords, width=22, height=10):
+    if not coords:
+        return [" " * width] * height
+    xs, ys = [c[0] for c in coords], [c[1] for c in coords]
+    xmin, xmax = min(xs), max(xs)
+    ymin, ymax = min(ys), max(ys)
+    xpad, ypad = (xmax-xmin)*0.1 or 0.0001, (ymax-ymin)*0.1 or 0.0001
+    xmin, xmax, ymin, ymax = xmin-xpad, xmax+xpad, ymin-ypad, ymax+ypad
+    grid = [[' ']*width for _ in range(height)]
+    for i in range(len(coords)):
+        x1, y1 = coords[i]
+        x2, y2 = coords[(i+1) % len(coords)]
+        gx1 = int((x1-xmin)/(xmax-xmin)*(width-1))
+        gy1 = int((ymax-y1)/(ymax-ymin)*(height-1))
+        gx2 = int((x2-xmin)/(xmax-xmin)*(width-1))
+        gy2 = int((ymax-y2)/(ymax-ymin)*(height-1))
+        steps = max(abs(gx2-gx1), abs(gy2-gy1), 1)
+        for s in range(steps+1):
+            x = int(gx1 + (gx2-gx1)*s/steps)
+            y = int(gy1 + (gy2-gy1)*s/steps)
+            if 0 <= x < width and 0 <= y < height:
+                grid[y][x] = '█'
+    return [''.join(row) for row in grid]
+
+W, H = 22, 10
+panels, labels = [], []
+for apn, city, sqft, wkt in parcels:
+    coords = parse_polygon(wkt) if wkt else []
+    panels.append(render_parcel(coords, W, H))
+    labels.append(((apn or "N/A")[:20], (city or "Unknown")[:18], int(sqft)))
+while len(panels) < 3:
+    panels.append([" "*W]*H)
+    labels.append(("N/A", "N/A", 0))
+
+print("\n" + "="*72)
+print("THREE RANDOM PARCELS")
+print("="*72)
+print("┌" + "─"*W + "┬" + "─"*W + "┬" + "─"*W + "┐")
+for row in range(H):
+    print("│" + panels[0][row] + "│" + panels[1][row] + "│" + panels[2][row] + "│")
+print("├" + "─"*W + "┼" + "─"*W + "┼" + "─"*W + "┤")
+print(f"│{labels[0][0]:^22}│{labels[1][0]:^22}│{labels[2][0]:^22}│")
+print(f"│{labels[0][1]:^22}│{labels[1][1]:^22}│{labels[2][1]:^22}│")
+print(f"│{labels[0][2]:>16,} sqft │{labels[1][2]:>16,} sqft │{labels[2][2]:>16,} sqft │")
+print("└" + "─"*W + "┴" + "─"*W + "┴" + "─"*W + "┘")
+EOF
+```
+
+Output:
+```
+========================================================================
+THREE RANDOM PARCELS
+========================================================================
+┌──────────────────────┬──────────────────────┬──────────────────────┐
+│      ███████         │ ███████████████████  │ ███████████████████  │
+│     █       ██████   │ █                 █  │ █                 █  │
+│  ███              █  │ █                 █  │ █                 █  │
+│  █               █   │ █                 █  │ █                 █  │
+│ █                █   │ █                 █  │ █                 █  │
+│ ██              █    │ █                 █  │ █                 █  │
+│  ████████       █    │ █                 █  │ █                 █  │
+│          ███████     │ █                 █  │ █                 █  │
+│                █     │ ███████████████████  │ ███████████████████  │
+│                      │                      │                      │
+├──────────────────────┼──────────────────────┼──────────────────────┤
+│   015-370-022-000    │       45016401       │      7066020025      │
+│      ROSEVILLE       │     BAKERSFIELD      │   HAWAIIAN GARDENS   │
+│          11,034 sqft │          12,035 sqft │          13,083 sqft │
+└──────────────────────┴──────────────────────┴──────────────────────┘
+```
+
 ## Citation
 
 ```
