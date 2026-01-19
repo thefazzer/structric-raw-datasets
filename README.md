@@ -133,7 +133,8 @@ downtown = conn.execute("""
 ### Export to CSV
 
 ```python
-import duckdb, time
+import duckdb, time, os
+os.chdir(os.path.expanduser('~/structric-data'))
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -176,7 +177,8 @@ export_csv(
 Generate a text-based visualization of parcel density across California:
 
 ```python
-import duckdb, math
+import duckdb, math, os
+os.chdir(os.path.expanduser('~/structric-data'))
 
 conn = duckdb.connect(':memory:')
 conn.execute("INSTALL spatial; LOAD spatial;")
@@ -188,6 +190,7 @@ col_type = conn.execute("""
 geom_expr = "geometry_wkb" if 'GEOMETRY' in col_type.upper() else "ST_GeomFromWKB(geometry_wkb)"
 
 # Get bounds
+print("Computing bounds...")
 bounds = conn.execute(f"""
     SELECT 
         MIN(ST_XMin({geom_expr})), MAX(ST_XMax({geom_expr})),
@@ -196,6 +199,7 @@ bounds = conn.execute(f"""
 """).fetchone()
 
 # Build density grid
+print("Building density grid...")
 W, H = 48, 18
 grid_data = conn.execute(f"""
     SELECT 
